@@ -44,13 +44,15 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
   Future<void> _cancelOrder(int orderId) async {
     final provider = context.read<OrderProvider>();
-    final ok = await provider.cancelOrder(orderId);
+    final errorMessage = await provider.cancelOrder(orderId);
     if (!mounted) return;
-    if (ok) {
+    if (errorMessage == null) {
+      // Success
       Fluttertoast.showToast(msg: 'Order cancelled');
       Navigator.of(context).pop();
     } else {
-      Fluttertoast.showToast(msg: 'Failed to cancel order');
+      // Failed - show actual error message
+      Fluttertoast.showToast(msg: errorMessage);
     }
   }
 
@@ -400,8 +402,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                         ),
                       if (order.paymentStatus?.toLowerCase() == 'pending')
                         const SizedBox(height: 12),
-                      if (order.status.toLowerCase() == 'pending' || 
-                          order.paymentStatus?.toLowerCase() == 'pending')
+                      // Show cancel button if payment is not paid and order is not already cancelled
+                      if (order.paymentStatus?.toLowerCase() != 'paid' && 
+                          order.status?.toLowerCase() != 'cancelled')
                         SizedBox(
                           width: double.infinity,
                           child: OutlinedButton.icon(

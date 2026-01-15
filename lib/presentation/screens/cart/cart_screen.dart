@@ -3,6 +3,8 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../../providers/cart_provider.dart';
+import '../../providers/auth_provider.dart';
+import '../auth/login_screen.dart';
 import '../checkout/checkout_screen.dart';
 
 class CartScreen extends StatefulWidget {
@@ -16,6 +18,14 @@ class CartScreen extends StatefulWidget {
 
 class _CartScreenState extends State<CartScreen> {
   final _currency = NumberFormat.simpleCurrency(locale: 'id_ID', name: 'Rp');
+
+  Future<void> _logout() async {
+    final auth = context.read<AuthProvider>();
+    await auth.logout();
+    if (!mounted) return;
+    Navigator.of(context)
+        .pushNamedAndRemoveUntil(LoginScreen.routeName, (route) => false);
+  }
 
   @override
   void initState() {
@@ -241,6 +251,46 @@ class _CartScreenState extends State<CartScreen> {
                 ),
               ),
             ),
+        ],
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: 2,
+        type: BottomNavigationBarType.fixed,
+        onTap: (index) async {
+          switch (index) {
+            case 0:
+              Navigator.of(context)
+                  .pushReplacementNamed('/home');
+              break;
+            case 1:
+              Navigator.of(context)
+                  .pushReplacementNamed('/orders');
+              break;
+            case 2:
+              // Stay on Cart
+              break;
+            case 3:
+              await _logout();
+              break;
+          }
+        },
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.home),
+            label: 'Home',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.receipt_long),
+            label: 'Orders',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.shopping_cart),
+            label: 'Cart',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.logout),
+            label: 'Logout',
+          ),
         ],
       ),
     );

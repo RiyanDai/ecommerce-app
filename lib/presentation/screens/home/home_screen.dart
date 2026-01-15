@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../../data/models/product_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/cart_provider.dart';
+import '../../providers/order_provider.dart';
 import '../../providers/product_provider.dart';
 import '../auth/login_screen.dart';
 import '../cart/cart_screen.dart';
@@ -34,6 +35,8 @@ class _HomeScreenState extends State<HomeScreen> {
       productProvider.fetchCategories();
       productProvider.fetchProducts(refresh: true);
       context.read<CartProvider>().fetchCart();
+      // Also refresh orders to ensure latest payment status is shown
+      context.read<OrderProvider>().fetchOrders();
     });
   }
 
@@ -64,49 +67,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('E-Commerce'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.receipt_long),
-            onPressed: () {
-              Navigator.of(context).pushNamed(OrderListScreen.routeName);
-            },
-          ),
-          Stack(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.shopping_cart),
-                onPressed: () {
-                  Navigator.of(context).pushNamed(CartScreen.routeName);
-                },
-              ),
-              if (cartProvider.itemCount > 0)
-                Positioned(
-                  right: 6,
-                  top: 6,
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: const BoxDecoration(
-                      color: Colors.red,
-                      shape: BoxShape.rectangle,
-                      borderRadius: BorderRadius.all(Radius.circular(10)),
-                    ),
-                    child: Text(
-                      cartProvider.itemCount.toString(),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: _logout,
-          ),
-        ],
+        automaticallyImplyLeading: false,
       ),
       body: Column(
         children: [
@@ -227,6 +188,70 @@ class _HomeScreenState extends State<HomeScreen> {
                 },
               ),
             ),
+          ),
+        ],
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: 0,
+        type: BottomNavigationBarType.fixed,
+        onTap: (index) async {
+          switch (index) {
+            case 0:
+              break;
+            case 1:
+              Navigator.of(context)
+                  .pushReplacementNamed(OrderListScreen.routeName);
+              break;
+            case 2:
+              Navigator.of(context)
+                  .pushReplacementNamed(CartScreen.routeName);
+              break;
+            case 3:
+              await _logout();
+              break;
+          }
+        },
+        items: [
+          const BottomNavigationBarItem(
+            icon: Icon(Icons.home),
+            label: 'Home',
+          ),
+          const BottomNavigationBarItem(
+            icon: Icon(Icons.receipt_long),
+            label: 'Orders',
+          ),
+          BottomNavigationBarItem(
+            icon: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                const Icon(Icons.shopping_cart),
+                if (cartProvider.itemCount > 0)
+                  Positioned(
+                    right: -6,
+                    top: -2,
+                    child: Container(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                      decoration: const BoxDecoration(
+                        color: Colors.red,
+                        borderRadius: BorderRadius.all(Radius.circular(10)),
+                      ),
+                      child: Text(
+                        cartProvider.itemCount.toString(),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 9,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            label: 'Cart',
+          ),
+          const BottomNavigationBarItem(
+            icon: Icon(Icons.logout),
+            label: 'Logout',
           ),
         ],
       ),

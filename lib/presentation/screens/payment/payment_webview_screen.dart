@@ -6,13 +6,7 @@ import '../../providers/payment_provider.dart';
 import '../../providers/order_provider.dart';
 import '../home/home_screen.dart';
 
-/// Payment WebView Screen
-/// 
-/// Displays Midtrans Snap payment page in WebView and handles payment flow:
-/// 1. Generate snap token from backend
-/// 2. Load Midtrans Snap URL in WebView
-/// 3. Poll backend to check payment status
-/// 4. Navigate to home when payment is complete
+
 class PaymentWebViewScreen extends StatefulWidget {
   static const String routeName = '/payment-webview';
   
@@ -52,7 +46,12 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _paymentProvider = Provider.of<PaymentProvider>(context, listen: false);
+    if (_paymentProvider == null) {
+      _paymentProvider = Provider.of<PaymentProvider>(context, listen: false);
+      // Clear previous payment data immediately to prevent auto-navigation
+      _paymentProvider?.clearPaymentData();
+      debugPrint('PaymentWebViewScreen: Payment data cleared for new order');
+    }
   }
 
   Future<void> _initializePayment() async {
@@ -181,27 +180,34 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
 
     debugPrint('PaymentWebViewScreen: Navigating to home...');
 
-    Future.microtask(() {
-      if (!mounted) return;
+    // Stop polling immediately to prevent further UI updates
+    _paymentProvider?.stopPolling();
 
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
+    // Save the current context before navigation
+    final currentContext = context;
 
+    // Navigate to home first, then refresh orders
+    Navigator.of(currentContext).pushNamedAndRemoveUntil(
+      HomeScreen.routeName,
+      (route) => false,
+    ).then((_) {
+      // After navigation completes, refresh the orders in the background
+      // This ensures the order list will show updated data when user navigates to it
+      debugPrint('PaymentWebViewScreen: Navigation complete, refreshing orders...');
+      
+      // The HomeScreen's initState will handle the refresh automatically
+      // But we can also trigger it here to be extra sure
+      Future.delayed(const Duration(milliseconds: 500), () {
         try {
-          // Stop polling to prevent further UI updates after navigation
-          _paymentProvider?.stopPolling();
-
-          // Refresh orders before navigating
-          Provider.of<OrderProvider>(context, listen: false).fetchOrders();
+          // Get the current context from the navigator
+          final navContext = Navigator.of(currentContext).context;
+          if (navContext.mounted) {
+            Provider.of<OrderProvider>(navContext, listen: false).fetchOrders();
+            debugPrint('PaymentWebViewScreen: Orders refreshed successfully');
+          }
         } catch (e) {
-          debugPrint('PaymentWebViewScreen: Error refreshing orders: $e');
+          debugPrint('PaymentWebViewScreen: Error refreshing orders after navigation: $e');
         }
-
-        // Navigate to home and clear all previous routes
-        Navigator.of(context).pushNamedAndRemoveUntil(
-          HomeScreen.routeName, // Home route
-          (route) => false, // Remove all previous routes
-        );
       });
     });
   }

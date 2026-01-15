@@ -133,17 +133,28 @@ class OrderProvider extends ChangeNotifier {
     }
   }
 
-  Future<bool> cancelOrder(int orderId) async {
+  Future<String?> cancelOrder(int orderId) async {
     _setLoading(true);
     try {
       final response = await _orderService.cancelOrder(orderId);
+      debugPrint('CANCEL ORDER RESPONSE: success=${response.success}, message=${response.message}, data=${response.data}, errors=${response.errors}');
       if (response.success) {
         await fetchOrders();
-        return true;
+        // Refresh order detail if it's the same order
+        if (_selectedOrder?.id == orderId) {
+          await fetchOrderDetail(orderId);
+        }
+        return null; // null means success
       }
-      return false;
-    } catch (_) {
-      return false;
+      // Return error message from API
+      final errorMessage = response.message.isNotEmpty 
+          ? response.message 
+          : 'Failed to cancel order';
+      debugPrint('CANCEL ORDER FAILED: $errorMessage');
+      return errorMessage;
+    } catch (e) {
+      debugPrint('CANCEL ORDER EXCEPTION: $e');
+      return 'Unexpected error occurred: $e';
     } finally {
       _setLoading(false);
     }

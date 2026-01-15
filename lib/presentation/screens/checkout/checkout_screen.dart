@@ -110,7 +110,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Customer Information (Auto-filled from login)
               Card(
                 elevation: 2,
                 child: Padding(

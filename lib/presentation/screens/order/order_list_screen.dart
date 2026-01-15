@@ -3,6 +3,8 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../../providers/order_provider.dart';
+import '../../providers/auth_provider.dart';
+import '../auth/login_screen.dart';
 import 'order_detail_screen.dart';
 
 class OrderListScreen extends StatefulWidget {
@@ -14,7 +16,7 @@ class OrderListScreen extends StatefulWidget {
   State<OrderListScreen> createState() => _OrderListScreenState();
 }
 
-class _OrderListScreenState extends State<OrderListScreen> {
+class _OrderListScreenState extends State<OrderListScreen> with WidgetsBindingObserver {
   final _currency =
       NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0);
   final _dateFormat = DateFormat('dd MMM yyyy, HH:mm');
@@ -22,12 +24,35 @@ class _OrderListScreenState extends State<OrderListScreen> {
   String _selectedFilter = 'All';
   final List<String> _filters = ['All', 'Pending', 'Processing', 'Completed', 'Cancelled'];
 
+  Future<void> _logout() async {
+    final auth = context.read<AuthProvider>();
+    await auth.logout();
+    if (!mounted) return;
+    Navigator.of(context)
+        .pushNamedAndRemoveUntil(LoginScreen.routeName, (route) => false);
+  }
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     Future.microtask(() {
       context.read<OrderProvider>().fetchOrders();
     });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Refresh orders when app comes back to foreground
+    if (state == AppLifecycleState.resumed && mounted) {
+      context.read<OrderProvider>().fetchOrders();
+    }
   }
 
   Color _statusColor(String status) {
@@ -330,6 +355,46 @@ class _OrderListScreenState extends State<OrderListScreen> {
                           );
                         },
                       ),
+          ),
+        ],
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: 1,
+        type: BottomNavigationBarType.fixed,
+        onTap: (index) async {
+          switch (index) {
+            case 0:
+              Navigator.of(context)
+                  .pushReplacementNamed('/home');
+              break;
+            case 1:
+              // Stay on Orders
+              break;
+            case 2:
+              Navigator.of(context)
+                  .pushReplacementNamed('/cart');
+              break;
+            case 3:
+              await _logout();
+              break;
+          }
+        },
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.home),
+            label: 'Home',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.receipt_long),
+            label: 'Orders',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.shopping_cart),
+            label: 'Cart',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.logout),
+            label: 'Logout',
           ),
         ],
       ),
