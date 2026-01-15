@@ -5,10 +5,11 @@ import 'package:webview_flutter/webview_flutter.dart';
 import '../../providers/payment_provider.dart';
 import '../../providers/order_provider.dart';
 import '../home/home_screen.dart';
-
+import 'payment_success_screen.dart';
 
 class PaymentWebViewScreen extends StatefulWidget {
   static const String routeName = '/payment-webview';
+  static const String argOrderNumber = 'order_number';
   
   final String orderNumber;
 
@@ -28,7 +29,6 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
   bool _hasNavigated = false;
   String? _snapToken;
   String? _errorMessage;
-  String? _currentUrl;
   PaymentProvider? _paymentProvider;
 
   // Midtrans Snap Sandbox URL
@@ -48,17 +48,12 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
     super.didChangeDependencies();
     if (_paymentProvider == null) {
       _paymentProvider = Provider.of<PaymentProvider>(context, listen: false);
-      // Clear previous payment data immediately to prevent auto-navigation
       _paymentProvider?.clearPaymentData();
-      debugPrint('PaymentWebViewScreen: Payment data cleared for new order');
     }
   }
 
   Future<void> _initializePayment() async {
     if (!mounted) return;
-
-    debugPrint('=== PaymentWebViewScreen: Initialize Payment ===');
-    debugPrint('PaymentWebViewScreen: Order Number: ${widget.orderNumber}');
 
     final paymentProvider = _paymentProvider ?? Provider.of<PaymentProvider>(context, listen: false);
     if (_paymentProvider == null) {
@@ -73,13 +68,10 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
     }
 
     try {
-      debugPrint('PaymentWebViewScreen: Requesting snap token...');
       final success = await paymentProvider.generateSnapToken(widget.orderNumber);
 
       if (success && paymentProvider.snapToken != null) {
         _snapToken = paymentProvider.snapToken;
-        debugPrint('PaymentWebViewScreen: ✅ Snap token received');
-
         await _initializeWebView();
         paymentProvider.startPolling(widget.orderNumber, maxAttempts: 60);
 
@@ -97,9 +89,7 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
           });
         }
       }
-    } catch (e, stackTrace) {
-      debugPrint('PaymentWebViewScreen: ❌ Error: $e');
-      debugPrint('PaymentWebViewScreen: Stack trace: $stackTrace');
+    } catch (e) {
       if (mounted) {
         setState(() {
           _isLoadingSnapToken = false;
@@ -110,13 +100,9 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
   }
 
   Future<void> _initializeWebView() async {
-    if (_snapToken == null) {
-      debugPrint('PaymentWebViewScreen: ❌ Cannot initialize WebView - snap token is null');
-      return;
-    }
+    if (_snapToken == null) return;
 
     final snapUrl = '$_midtransBaseUrl/snap/v2/vtweb/$_snapToken';
-    debugPrint('PaymentWebViewScreen: Opening Snap URL: $snapUrl');
 
     try {
       _webViewController = WebViewController()
@@ -124,27 +110,22 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
         ..setNavigationDelegate(
           NavigationDelegate(
             onPageStarted: (String url) {
-              debugPrint('PaymentWebViewScreen: WebView page started: $url');
               _handleUrlSideEffects(url);
               if (mounted) {
                 setState(() {
                   _isWebViewLoading = true;
-                  _currentUrl = url;
                 });
               }
             },
             onPageFinished: (String url) {
-              debugPrint('PaymentWebViewScreen: WebView page finished: $url');
               _handleUrlSideEffects(url);
               if (mounted) {
                 setState(() {
                   _isWebViewLoading = false;
-                  _currentUrl = url;
                 });
               }
             },
             onWebResourceError: (WebResourceError error) {
-              debugPrint('PaymentWebViewScreen: WebView error: ${error.description}');
               if (mounted) {
                 setState(() {
                   _isWebViewLoading = false;
@@ -152,7 +133,6 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
               }
             },
             onNavigationRequest: (NavigationRequest request) {
-              debugPrint('PaymentWebViewScreen: Navigation request: ${request.url}');
               _handleUrlSideEffects(request.url);
               return NavigationDecision.navigate;
             },
@@ -163,8 +143,7 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
       if (mounted) {
         setState(() {});
       }
-    } catch (e, stackTrace) {
-      debugPrint('PaymentWebViewScreen: ❌ Error initializing WebView: $e');
+    } catch (e) {
       if (mounted) {
         setState(() {
           _errorMessage = 'Failed to load payment page: $e';
@@ -174,46 +153,29 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
     }
   }
 
-  void _navigateToHome() {
+  void _navigateToSuccess() {
     if (_hasNavigated || !mounted) return;
     _hasNavigated = true;
 
-    debugPrint('PaymentWebViewScreen: Navigating to home...');
-
-    // Stop polling immediately to prevent further UI updates
     _paymentProvider?.stopPolling();
 
-    // Save the current context before navigation
-    final currentContext = context;
+    // Find order ID from order number
+    final orderProvider = Provider.of<OrderProvider>(context, listen: false);
+    final orderId = orderProvider.findOrderIdByOrderNumber(widget.orderNumber);
 
-    // Navigate to home first, then refresh orders
-    Navigator.of(currentContext).pushNamedAndRemoveUntil(
-      HomeScreen.routeName,
-      (route) => false,
-    ).then((_) {
-      // After navigation completes, refresh the orders in the background
-      // This ensures the order list will show updated data when user navigates to it
-      debugPrint('PaymentWebViewScreen: Navigation complete, refreshing orders...');
-      
-      // The HomeScreen's initState will handle the refresh automatically
-      // But we can also trigger it here to be extra sure
-      Future.delayed(const Duration(milliseconds: 500), () {
-        try {
-          // Get the current context from the navigator
-          final navContext = Navigator.of(currentContext).context;
-          if (navContext.mounted) {
-            Provider.of<OrderProvider>(navContext, listen: false).fetchOrders();
-            debugPrint('PaymentWebViewScreen: Orders refreshed successfully');
-          }
-        } catch (e) {
-          debugPrint('PaymentWebViewScreen: Error refreshing orders after navigation: $e');
-        }
-      });
-    });
+    // Refresh orders to get latest data
+    orderProvider.fetchOrders();
+
+    // Navigate to success screen
+    Navigator.of(context).pushReplacementNamed(
+      PaymentSuccessScreen.routeName,
+      arguments: {
+        PaymentSuccessScreen.argOrderNumber: widget.orderNumber,
+        PaymentSuccessScreen.argOrderId: orderId,
+      },
+    );
   }
 
-  /// Midtrans sometimes redirects with status parameters before webhook/polling updates.
-  /// Detect success/failed from URL hints to avoid waiting forever.
   void _handleUrlSideEffects(String url) {
     final lower = url.toLowerCase();
 
@@ -228,14 +190,12 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
         lower.contains('transaction_status=cancel');
 
     if (!_hasNavigated && isSuccess) {
-      debugPrint('PaymentWebViewScreen: Detected success from URL, navigating home.');
       _paymentProvider?.stopPolling();
-      _navigateToHome();
+      _navigateToSuccess();
       return;
     }
 
     if (!_hasNavigated && (isExpired || isFailed)) {
-      debugPrint('PaymentWebViewScreen: Detected failure/expired from URL.');
       _paymentProvider?.stopPolling();
       if (mounted) {
         setState(() {
@@ -255,21 +215,21 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
   Widget build(BuildContext context) {
     return WillPopScope(
       onWillPop: () async {
-        // Confirm before going back during payment
         if (!_hasNavigated) {
           final shouldPop = await showDialog<bool>(
             context: context,
             builder: (context) => AlertDialog(
-              title: const Text('Cancel Payment?'),
-              content: const Text('Are you sure you want to cancel this payment?'),
+              title: const Text('Batalkan Pembayaran?'),
+              content: const Text('Apakah Anda yakin ingin membatalkan pembayaran ini?'),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(false),
-                  child: const Text('No'),
+                  child: const Text('Tidak'),
                 ),
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(true),
-                  child: const Text('Yes'),
+                  style: TextButton.styleFrom(foregroundColor: Colors.red),
+                  child: const Text('Ya, Batalkan'),
                 ),
               ],
             ),
@@ -279,29 +239,67 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
         return true;
       },
       child: Scaffold(
+        backgroundColor: Colors.white,
         appBar: AppBar(
-          title: const Text('Payment'),
-          backgroundColor: Colors.blue,
-          foregroundColor: Colors.white,
+          backgroundColor: Colors.white,
+          elevation: 0.5,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: Colors.black87),
+            onPressed: () async {
+              if (!_hasNavigated) {
+                final shouldPop = await showDialog<bool>(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text('Batalkan Pembayaran?'),
+                    content: const Text('Apakah Anda yakin ingin membatalkan pembayaran ini?'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(false),
+                        child: const Text('Tidak'),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(true),
+                        style: TextButton.styleFrom(foregroundColor: Colors.red),
+                        child: const Text('Ya, Batalkan'),
+                      ),
+                    ],
+                  ),
+                );
+                if (shouldPop == true && mounted) {
+                  Navigator.of(context).pop();
+                }
+              } else {
+                Navigator.of(context).pop();
+              }
+            },
+          ),
+          title: const Text(
+            'Pembayaran',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
+            ),
+          ),
         ),
         body: Consumer<PaymentProvider>(
           builder: (context, paymentProvider, _) {
-            // Auto navigate to home if payment is successful
+            // Auto navigate to success if payment is successful
             if (paymentProvider.paymentStatus != null &&
                 !_hasNavigated &&
                 paymentProvider.paymentStatus!.isPaid) {
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 if (mounted && !_hasNavigated) {
-                  _navigateToHome();
+                  _navigateToSuccess();
                 }
               });
             }
 
             final paymentStatus = paymentProvider.paymentStatus;
 
-            // Success state
+            // Success state - navigate to success screen
             if (paymentStatus != null && paymentStatus.isPaid) {
-              return _buildSuccessState();
+              return _buildLoadingState('Menyiapkan halaman sukses...');
             }
 
             // Failed state
@@ -316,7 +314,7 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
 
             // Loading state
             if (_isLoadingSnapToken) {
-              return _buildLoadingState('Preparing payment...');
+              return _buildLoadingState('Menyiapkan pembayaran...');
             }
 
             // Error state
@@ -341,7 +339,10 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
           const SizedBox(height: 24),
           Text(
             message,
-            style: const TextStyle(fontSize: 16, color: Colors.grey),
+            style: TextStyle(
+              fontSize: 16,
+              color: Colors.grey[600],
+            ),
           ),
         ],
       ),
@@ -355,24 +356,36 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(
-              Icons.error_outline,
-              size: 64,
-              color: Colors.red,
+            Container(
+              width: 100,
+              height: 100,
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.error_outline,
+                size: 64,
+                color: Colors.red,
+              ),
             ),
             const SizedBox(height: 24),
             const Text(
-              'Payment Error',
+              'Error Pembayaran',
               style: TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
+                color: Colors.black87,
               ),
             ),
             const SizedBox(height: 16),
             Text(
               error,
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 16, color: Colors.grey),
+              style: TextStyle(
+                fontSize: 16,
+                color: Colors.grey[600],
+              ),
             ),
             const SizedBox(height: 32),
             ElevatedButton(
@@ -385,14 +398,25 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
                 _initializePayment();
               },
               style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
-              child: const Text('Try Again'),
+              child: const Text('Coba Lagi'),
             ),
             const SizedBox(height: 16),
             OutlinedButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Go Back'),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text('Kembali'),
             ),
           ],
         ),
@@ -407,14 +431,27 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
         if (_webViewController != null)
           WebViewWidget(controller: _webViewController!)
         else
-          _buildLoadingState('Initializing payment page...'),
+          _buildLoadingState('Memuat halaman pembayaran...'),
 
         // Loading overlay
         if (_isWebViewLoading)
           Container(
-            color: Colors.white.withOpacity(0.8),
-            child: const Center(
-              child: CircularProgressIndicator(),
+            color: Colors.white.withOpacity(0.9),
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Memuat halaman pembayaran...',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
 
@@ -458,83 +495,25 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 ),
                 const SizedBox(width: 12),
-                const Text(
-                  'Waiting for payment confirmation...',
+                Text(
+                  'Menunggu konfirmasi pembayaran...',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w500,
-                    color: Colors.orange,
+                    color: Colors.orange[700],
                   ),
                 ),
               ],
             ),
           const SizedBox(height: 8),
           Text(
-            'Order: ${widget.orderNumber}',
-            style: const TextStyle(
+            'Pesanan: ${widget.orderNumber}',
+            style: TextStyle(
               fontSize: 12,
-              color: Colors.grey,
+              color: Colors.grey[600],
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildSuccessState() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 100,
-              height: 100,
-              decoration: BoxDecoration(
-                color: Colors.green.withOpacity(0.1),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.check_circle,
-                size: 64,
-                color: Colors.green,
-              ),
-            ),
-            const SizedBox(height: 24),
-            const Text(
-              'Payment Successful!',
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
-                color: Colors.green,
-              ),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Your payment has been confirmed.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey,
-              ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Redirecting to home...',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey,
-                fontStyle: FontStyle.italic,
-              ),
-            ),
-            const SizedBox(height: 32),
-            const CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -561,20 +540,20 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
             ),
             const SizedBox(height: 24),
             const Text(
-              'Payment Failed',
+              'Pembayaran Gagal',
               style: TextStyle(
-                fontSize: 28,
+                fontSize: 24,
                 fontWeight: FontWeight.bold,
-                color: Colors.red,
+                color: Colors.black87,
               ),
             ),
             const SizedBox(height: 16),
-            const Text(
-              'Your payment could not be processed.',
+            Text(
+              'Pembayaran Anda tidak dapat diproses.\nSilakan coba lagi.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 16,
-                color: Colors.grey,
+                color: Colors.grey[600],
               ),
             ),
             const SizedBox(height: 32),
@@ -588,14 +567,25 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
                 _initializePayment();
               },
               style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
-              child: const Text('Try Again'),
+              child: const Text('Coba Lagi'),
             ),
             const SizedBox(height: 16),
             OutlinedButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Go Back'),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text('Kembali'),
             ),
           ],
         ),
@@ -625,20 +615,20 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
             ),
             const SizedBox(height: 24),
             const Text(
-              'Payment Expired',
+              'Pembayaran Kedaluwarsa',
               style: TextStyle(
-                fontSize: 28,
+                fontSize: 24,
                 fontWeight: FontWeight.bold,
-                color: Colors.orange,
+                color: Colors.black87,
               ),
             ),
             const SizedBox(height: 16),
-            const Text(
-              'The payment session has expired.',
+            Text(
+              'Sesi pembayaran telah kedaluwarsa.\nSilakan buat pembayaran baru.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 16,
-                color: Colors.grey,
+                color: Colors.grey[600],
               ),
             ),
             const SizedBox(height: 32),
@@ -652,14 +642,25 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
                 _initializePayment();
               },
               style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
-              child: const Text('Create New Payment'),
+              child: const Text('Buat Pembayaran Baru'),
             ),
             const SizedBox(height: 16),
             OutlinedButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Go Back'),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text('Kembali'),
             ),
           ],
         ),

@@ -132,7 +132,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     final strengthScore = _passwordStrength(pw);
 
     return Scaffold(
-      // no AppBar to match design
+ 
       body: SafeArea(
         child: LayoutBuilder(builder: (context, boxConstraints) {
           return SingleChildScrollView(

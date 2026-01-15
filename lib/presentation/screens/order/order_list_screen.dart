@@ -5,7 +5,9 @@ import 'package:provider/provider.dart';
 import '../../providers/order_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../auth/login_screen.dart';
+import '../home/home_screen.dart';
 import 'order_detail_screen.dart';
+import '../../widgets/app_bottom_navigation_bar.dart';
 
 class OrderListScreen extends StatefulWidget {
   static const String routeName = '/orders';
@@ -16,21 +18,20 @@ class OrderListScreen extends StatefulWidget {
   State<OrderListScreen> createState() => _OrderListScreenState();
 }
 
-class _OrderListScreenState extends State<OrderListScreen> with WidgetsBindingObserver {
+class _OrderListScreenState extends State<OrderListScreen>
+    with WidgetsBindingObserver {
   final _currency =
       NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0);
   final _dateFormat = DateFormat('dd MMM yyyy, HH:mm');
 
   String _selectedFilter = 'All';
-  final List<String> _filters = ['All', 'Pending', 'Processing', 'Completed', 'Cancelled'];
-
-  Future<void> _logout() async {
-    final auth = context.read<AuthProvider>();
-    await auth.logout();
-    if (!mounted) return;
-    Navigator.of(context)
-        .pushNamedAndRemoveUntil(LoginScreen.routeName, (route) => false);
-  }
+  final List<String> _filters = [
+    'All',
+    'Pending',
+    'Processing',
+    'Completed',
+    'Cancelled'
+  ];
 
   @override
   void initState() {
@@ -97,9 +98,24 @@ class _OrderListScreenState extends State<OrderListScreen> with WidgetsBindingOb
 
   List<dynamic> _getFilteredOrders(List<dynamic> orders) {
     if (_selectedFilter == 'All') return orders;
-    return orders.where((order) => 
-      order.status.toLowerCase() == _selectedFilter.toLowerCase()
-    ).toList();
+    return orders.where((order) {
+      final paymentStatus = order.paymentStatus?.toLowerCase() ?? 'pending';
+      final filterLower = _selectedFilter.toLowerCase();
+
+      // Map filter to payment status
+      if (filterLower == 'pending') {
+        return paymentStatus == 'pending';
+      } else if (filterLower == 'completed') {
+        return paymentStatus == 'paid';
+      } else if (filterLower == 'cancelled') {
+        return paymentStatus == 'failed' || paymentStatus == 'expired';
+      } else if (filterLower == 'processing') {
+        return paymentStatus == 'paid' &&
+            (order.status?.toLowerCase() == 'processing' ||
+                order.status?.toLowerCase() == 'shipped');
+      }
+      return false;
+    }).toList();
   }
 
   @override
@@ -111,8 +127,19 @@ class _OrderListScreenState extends State<OrderListScreen> with WidgetsBindingOb
     return Scaffold(
       backgroundColor: Colors.grey[50],
       appBar: AppBar(
-        title: const Text('My Orders'),
-        backgroundColor: Colors.blue,
+        backgroundColor: Colors.white,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.black87),
+          onPressed: () => Navigator.of(context).pushReplacementNamed(HomeScreen.routeName),
+        ),
+        title: const Text(
+          'My Orders',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: Colors.black87,
+          ),
+        ),
         elevation: 0.5,
       ),
       body: Column(
@@ -141,9 +168,11 @@ class _OrderListScreenState extends State<OrderListScreen> with WidgetsBindingOb
                       selectedColor: Colors.blue,
                       labelStyle: TextStyle(
                         color: isSelected ? Colors.white : Colors.black87,
-                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                        fontWeight:
+                            isSelected ? FontWeight.w600 : FontWeight.normal,
                       ),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
                     ),
                   );
                 }).toList(),
@@ -181,174 +210,234 @@ class _OrderListScreenState extends State<OrderListScreen> with WidgetsBindingOb
                         itemCount: orders.length,
                         itemBuilder: (context, index) {
                           final order = orders[index];
-                          final itemCount = order.items?.length ?? 0;
-                          
-                          return Card(
-                            margin: const EdgeInsets.only(bottom: 12),
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              side: BorderSide(color: Colors.grey[200]!),
+                          final items = order.items ?? [];
+                          final paymentStatus =
+                              order.paymentStatus ?? 'pending';
+                          final statusColor =
+                              _paymentStatusColor(paymentStatus);
+
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 16),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.08),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
                             ),
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(12),
-                              onTap: () {
-                                if (order.id > 0) {
-                                  Navigator.of(context).pushNamed(
-                                    OrderDetailScreen.routeName,
-                                    arguments: order.id,
-                                  );
-                                } else {
-                                  debugPrint('Invalid order ID: ${order.id}');
-                                }
-                              },
-                              child: Padding(
-                                padding: const EdgeInsets.all(16),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    // Order Number & Order Status
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Expanded(
-                                          child: Text(
-                                            order.orderNumber ?? 'N/A',
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 16,
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(16),
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  border: Border(
+                                    left: BorderSide(
+                                      color: statusColor,
+                                      width: 4,
+                                    ),
+                                  ),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(16),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      // Order Number & Status
+                                      Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              order.orderNumber ?? 'N/A',
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 16,
+                                                color: Colors.black87,
+                                              ),
                                             ),
                                           ),
-                                        ),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 12,
-                                            vertical: 6,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: _statusColor(order.status)
-                                                .withOpacity(0.1),
-                                            borderRadius: BorderRadius.circular(20),
-                                          ),
-                                          child: Text(
-                                            order.status ?? 'N/A',
-                                            style: TextStyle(
-                                              color: _statusColor(order.status),
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.w600,
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 12,
+                                              vertical: 6,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color:
+                                                  statusColor.withOpacity(0.1),
+                                              borderRadius:
+                                                  BorderRadius.circular(20),
+                                            ),
+                                            child: Text(
+                                              paymentStatus.toUpperCase(),
+                                              style: TextStyle(
+                                                color: statusColor,
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w600,
+                                              ),
                                             ),
                                           ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 8),
-
-                                    // Payment Status
-                                    Row(
-                                      children: [
-                                        Icon(
-                                          Icons.payment,
-                                          size: 14,
-                                          color: Colors.grey[600],
-                                        ),
-                                        const SizedBox(width: 6),
-                                        Text(
-                                          'Payment: ',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.grey[600],
-                                          ),
-                                        ),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 8,
-                                            vertical: 2,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: _paymentStatusColor(order.paymentStatus)
-                                                .withOpacity(0.1),
-                                            borderRadius: BorderRadius.circular(12),
-                                            border: Border.all(
-                                              color: _paymentStatusColor(order.paymentStatus),
-                                              width: 1,
-                                            ),
-                                          ),
-                                          child: Text(
-                                            (order.paymentStatus ?? 'N/A').toUpperCase(),
-                                            style: TextStyle(
-                                              color: _paymentStatusColor(order.paymentStatus),
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 8),
-
-                                    // Date
-                                    Row(
-                                      children: [
-                                        Icon(
-                                          Icons.calendar_today_outlined,
-                                          size: 14,
-                                          color: Colors.grey[600],
-                                        ),
-                                        const SizedBox(width: 6),
-                                        Text(
-                                          order.orderDate != null
-                                              ? _dateFormat.format(order.orderDate!)
-                                              : 'N/A',
-                                          style: TextStyle(
-                                            fontSize: 13,
-                                            color: Colors.grey[600],
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 8),
-
-                                    // Item Count & Total
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Text(
-                                          '$itemCount items • Total: ${_currency.format(order.totalAmount)}',
-                                          style: const TextStyle(
-                                            fontSize: 14,
-                                            color: Colors.black87,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 12),
-
-                                    // View Details Button
-                                    SizedBox(
-                                      width: double.infinity,
-                                      child: OutlinedButton.icon(
-                                        onPressed: () {
-                                          if (order.id > 0) {
-                                            Navigator.of(context).pushNamed(
-                                              OrderDetailScreen.routeName,
-                                              arguments: order.id,
-                                            );
-                                          } else {
-                                            debugPrint('Invalid order ID: ${order.id}');
-                                          }
-                                        },
-                                        icon: const Icon(Icons.visibility_outlined, size: 18),
-                                        label: const Text('View Details'),
-                                        style: OutlinedButton.styleFrom(
-                                          foregroundColor: Colors.blue,
-                                          side: const BorderSide(color: Colors.blue),
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(8),
-                                          ),
-                                        ),
+                                        ],
                                       ),
-                                    ),
-                                  ],
+                                      const SizedBox(height: 16),
+
+                                      // Product List Section
+                                      if (items.isNotEmpty) ...[
+                                        ...items.take(3).map((item) {
+                                          return Padding(
+                                            padding: const EdgeInsets.only(
+                                                bottom: 12),
+                                            child: Row(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                // Product Thumbnail
+                                                Container(
+                                                  width: 56,
+                                                  height: 56,
+                                                  decoration: BoxDecoration(
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            8),
+                                                    color: Colors.grey[200],
+                                                  ),
+                                                  child: ClipRRect(
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            8),
+                                                    child: Icon(
+                                                      Icons.image,
+                                                      size: 24,
+                                                      color: Colors.grey[400],
+                                                    ),
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 12),
+                                                // Product Details
+                                                Expanded(
+                                                  child: Column(
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment
+                                                            .start,
+                                                    children: [
+                                                      Text(
+                                                        item.productName,
+                                                        style: const TextStyle(
+                                                          fontSize: 15,
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                          color: Colors.black87,
+                                                        ),
+                                                        maxLines: 2,
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
+                                                      ),
+                                                      const SizedBox(height: 4),
+                                                      Text(
+                                                        'x${item.quantity} • ${_currency.format(item.productPrice)}${item.quantity > 1 ? ' each' : ''}',
+                                                        style: TextStyle(
+                                                          fontSize: 13,
+                                                          color:
+                                                              Colors.grey[600],
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+                                        }).toList(),
+                                        // Show "+X more items" if more than 3
+                                        if (items.length > 3)
+                                          Padding(
+                                            padding:
+                                                const EdgeInsets.only(top: 4),
+                                            child: Text(
+                                              '+${items.length - 3} more items',
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                color: Colors.grey[600],
+                                                fontStyle: FontStyle.italic,
+                                              ),
+                                            ),
+                                          ),
+                                        const SizedBox(height: 16),
+                                        const Divider(height: 1),
+                                        const SizedBox(height: 12),
+                                      ],
+
+                                      // Card Footer
+                                      Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.spaceBetween,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.center,
+                                        children: [
+                                          // Total
+                                          Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              const Text(
+                                                'Total:',
+                                                style: TextStyle(
+                                                  fontSize: 14,
+                                                  color: Colors.black87,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 2),
+                                              Text(
+                                                _currency
+                                                    .format(order.totalAmount),
+                                                style: const TextStyle(
+                                                  fontSize: 18,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.black87,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          // View Details Button
+                                          OutlinedButton(
+                                            onPressed: () {
+                                              if (order.id > 0) {
+                                                Navigator.of(context).pushNamed(
+                                                  OrderDetailScreen.routeName,
+                                                  arguments: order.id,
+                                                );
+                                              } else {
+                                                debugPrint(
+                                                    'Invalid order ID: ${order.id}');
+                                              }
+                                            },
+                                            style: OutlinedButton.styleFrom(
+                                              foregroundColor: Colors.blue,
+                                              side: const BorderSide(
+                                                  color: Colors.blue),
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                              ),
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                horizontal: 16,
+                                                vertical: 8,
+                                              ),
+                                            ),
+                                            child: const Text(
+                                              'View Details',
+                                              style: TextStyle(fontSize: 14),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
@@ -358,46 +447,7 @@ class _OrderListScreenState extends State<OrderListScreen> with WidgetsBindingOb
           ),
         ],
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: 1,
-        type: BottomNavigationBarType.fixed,
-        onTap: (index) async {
-          switch (index) {
-            case 0:
-              Navigator.of(context)
-                  .pushReplacementNamed('/home');
-              break;
-            case 1:
-              // Stay on Orders
-              break;
-            case 2:
-              Navigator.of(context)
-                  .pushReplacementNamed('/cart');
-              break;
-            case 3:
-              await _logout();
-              break;
-          }
-        },
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home),
-            label: 'Home',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.receipt_long),
-            label: 'Orders',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.shopping_cart),
-            label: 'Cart',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.logout),
-            label: 'Logout',
-          ),
-        ],
-      ),
+      bottomNavigationBar: const AppBottomNavigationBar(currentIndex: 1),
     );
   }
 }

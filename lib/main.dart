@@ -16,9 +16,11 @@ import 'presentation/screens/cart/cart_screen.dart';
 import 'presentation/screens/checkout/checkout_screen.dart';
 import 'presentation/screens/payment/payment_screen.dart';
 import 'presentation/screens/payment/payment_webview_screen.dart';
+import 'presentation/screens/payment/payment_success_screen.dart';
 import 'presentation/screens/order/order_list_screen.dart';
 import 'presentation/screens/order/order_detail_screen.dart';
 import 'presentation/screens/product/product_detail_screen.dart';
+import 'presentation/screens/profile/profile_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -57,9 +59,20 @@ class MyApp extends StatelessWidget {
               snapToken: args[PaymentScreen.argSnapToken] as String,
             );
           },
+          PaymentWebViewScreen.routeName: (context) {
+            final args = ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>;
+            return PaymentWebViewScreen(
+              orderNumber: args[PaymentWebViewScreen.argOrderNumber] as String,
+            );
+          },
           OrderListScreen.routeName: (_) => const OrderListScreen(),
           OrderDetailScreen.routeName: (_) => const OrderDetailScreen(),
           ProductDetailScreen.routeName: (_) => const ProductDetailScreen(),
+          ProfileScreen.routeName: (_) => const ProfileScreen(),
+          PaymentSuccessScreen.routeName: (context) {
+            final args = ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>;
+            return PaymentSuccessScreen();
+          },
         },
       ),
     );

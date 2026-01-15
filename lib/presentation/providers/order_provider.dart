@@ -165,6 +165,28 @@ class OrderProvider extends ChangeNotifier {
     _notifySafe();
   }
 
+  int? findOrderIdByOrderNumber(String orderNumber) {
+    try {
+      final order = _orders.firstWhere(
+        (order) => order.orderNumber == orderNumber,
+        orElse: () => OrderModel(
+          id: 0,
+          orderNumber: '',
+          totalAmount: 0,
+          status: '',
+          customerName: '',
+          customerEmail: '',
+          customerPhone: '',
+          shippingAddress: '',
+          items: [],
+        ),
+      );
+      return order.id > 0 ? order.id : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   void _notifySafe() {
     final phase = SchedulerBinding.instance.schedulerPhase;
     if (phase == SchedulerPhase.idle || phase == SchedulerPhase.postFrameCallbacks) {

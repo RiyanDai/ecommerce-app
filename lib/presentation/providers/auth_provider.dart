@@ -40,6 +40,64 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> fetchUser() async {
+    _setLoading(true);
+    _setError(null);
+    try {
+      final response = await _authService.getCurrentUser();
+      if (response.success && response.data is Map<String, dynamic>) {
+        final user = UserModel.fromJson(response.data as Map<String, dynamic>);
+        await StorageHelper.saveUser(user);
+        _currentUser = user;
+        _notifySafe();
+      } else {
+        _setError(response.message);
+      }
+    } catch (_) {
+      _setError('Failed to fetch user data.');
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  Future<ApiResponse> updateProfile({
+    required String name,
+    required String email,
+    String? phone,
+    String? address,
+  }) async {
+    _setLoading(true);
+    _setError(null);
+    try {
+      final response = await _authService.updateProfile(
+        name: name,
+        email: email,
+        phone: phone,
+        address: address,
+      );
+      if (response.success && response.data is Map<String, dynamic>) {
+        final user = UserModel.fromJson(response.data as Map<String, dynamic>);
+        await StorageHelper.saveUser(user);
+        _currentUser = user;
+        _notifySafe();
+      } else {
+        _setError(response.message);
+      }
+      return response;
+    } catch (_) {
+      final res = ApiResponse(
+        success: false,
+        message: 'Failed to update profile. Please try again.',
+        data: null,
+        errors: null,
+      );
+      _setError(res.message);
+      return res;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
   Future<ApiResponse> login(String email, String password) async {
     _setLoading(true);
     _setError(null);
@@ -57,6 +115,9 @@ class AuthProvider extends ChangeNotifier {
         await StorageHelper.saveUser(user);
         _currentUser = user;
         _notifySafe();
+        
+        // Fetch full user data including address after login
+        await fetchUser();
       } else {
         _setError(response.message);
       }

@@ -106,6 +106,40 @@ class AuthService {
       );
     }
   }
+
+  Future<ApiResponse> updateProfile({
+    required String name,
+    required String email,
+    String? phone,
+    String? address,
+  }) async {
+    try {
+      final response = await _dio.put(
+        ApiConstants.updateProfile,
+        data: {
+          'name': name,
+          'email': email,
+          if (phone != null) 'phone': phone,
+          if (address != null) 'address': address,
+        },
+      );
+      return ApiResponse.fromJson(response.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      return ApiResponse(
+        success: false,
+        message: DioClient.getErrorMessage(e),
+        data: null,
+        errors: e.response?.data,
+      );
+    } catch (_) {
+      return ApiResponse(
+        success: false,
+        message: 'Unexpected error. Please try again.',
+        data: null,
+        errors: null,
+      );
+    }
+  }
 }
 
 

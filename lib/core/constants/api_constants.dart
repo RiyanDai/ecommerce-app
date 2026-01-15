@@ -10,6 +10,8 @@ class ApiConstants {
   static const String register = '$baseUrl/register';
   static const String logout = '$baseUrl/logout';
   static const String currentUser = '$baseUrl/user';
+  static const String updateProfile = '$baseUrl/user';
+  static const String updateProfileAlias = '$baseUrl/profile';
 
   // Products & Categories
   static const String products = '$baseUrl/products';
